@@ -3,40 +3,40 @@
 
 class KMLFile
 {
-    private $cookie;
     private $date;
     private $tmpFolder;
     private $kmlfilename;
 
-    function __construct($cookie, $date, $tmpFolder)
+    function __construct($date, $tmpFolder)
     {
-        $this->cookie = $cookie;
         $this->date = $date;
         $this->tmpFolder = $tmpFolder;
-        $this->kmlfilename = '';
+        
+        $d = date('j', $this->date);
+        $m = date('n', $this->date);
+        $y = date('Y', $this->date);
+
+        $this->kmlfilename = $this->tmpFolder . "$y-$m-$d.xml";
     }
 
 
     /**
      * Fetch all the KML and store them in temp xml files, because the whole process might take some time.
      */
-    function fetchKML()
+    function fetchKML($cookie)
     {
-        $ch = curl_init();
-
-        $d = date('j', $this->date);
-        $m = date('n', $this->date);
-        $y = date('Y', $this->date);
-
-        $this->kmlfilename = $this->tmpFolder . "$y-$m-$d.xml";
         if (file_exists($this->kmlfilename))
             return true;
+        
+        $d = date('j', $this->date);
+        $m = date('n', $this->date) - 1; // JS Style, months start at 0
+        $y = date('Y', $this->date);
 
-        $m = $m - 1; // JS Style, months start at 0
         $url = "https://www.google.fr/maps/timeline/kml?authuser=0&pb=!1m8!1m3!1i$y!2i$m!3i$d!2m3!1i$y!2i$m!3i$d";
 
+        $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_COOKIE, $this->cookie);
+        curl_setopt($ch, CURLOPT_COOKIE, $cookie);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
@@ -55,11 +55,6 @@ class KMLFile
 
     function fileExists()
     {
-        $d = date('j', $this->date);
-        $m = date('n', $this->date);
-        $y = date('Y', $this->date);
-
-        $this->kmlfilename = $this->tmpFolder . "$y-$m-$d.xml";
         if (file_exists($this->kmlfilename))
             return true;
 
@@ -99,57 +94,60 @@ class KMLFile
         return true;
     }
 
-    function parseKML($folder)
+    function parse()
     {
-        $files = glob($folder . '*.xml');
+        if (!file_exists($this->kmlfilename))
+            return false;
 
+        libxml_use_internal_errors(true);
 
-        foreach ($files as $filename)
+        $xml = simplexml_load_file($this->kmlfilename);
+
+        if ($xml === false)
+            throw new Exception('Error: XML file is not valid');
+
+        $dayData = array();
+
+        foreach ($xml->Document->Placemark as $placemark)
         {
-            $xml = simplexml_load_file($filename);
-            $dayData = array();
+            $data = array();
 
-            foreach ($xml->Document->Placemark as $placemark)
+            foreach ($placemark->ExtendedData->Data as $ext)
             {
-                $data= array();
-
-                foreach ($placemark->ExtendedData->Data as $ext)
-                {
-                    $data[(string)$ext->attributes()->name] = (string)$ext->value;
-                }
-
-                if (empty($data['Distance']))
-                    continue; // ignore empty movements
-
-                $begin = strtotime((string)$placemark->TimeSpan->begin);
-                $end = strtotime((string)$placemark->TimeSpan->end);
-
-                $distance = (int)$data['Distance'] / 1000;
-
-                $category = $data['Category'];
-
-                if (isset($dayData[$category]))
-                {
-                    $dayData[$category]['elapsedTime'] += $end - $begin;
-                    $dayData[$category]['distance'] += $distance;
-                }
-                else
-                {
-                    $dayData[$category]['elapsedTime'] = $end - $begin;
-                    $dayData[$category]['distance'] = $distance;
-                }
-
-                $dayData[$category]['day'] = date('Y-m-d', $begin);
+                $data[(string)$ext->attributes()->name] = (string)$ext->value;
             }
 
-            foreach ($dayData as $category => $data)
-            {
-                $data['speed'] = round($data['distance'] / ($data['elapsedTime'] / 3600), 2);
-                $data['elapsedTime'] = gmdate("H:i:s", $data['elapsedTime']);
+            if (empty($data['Distance']))
+                continue; // ignore empty movements
 
-                echo $category . "\t" . implode("\t", $data) . "\n";
+            $begin = strtotime((string)$placemark->TimeSpan->begin);
+            $end = strtotime((string)$placemark->TimeSpan->end);
+
+            $distance = (int)$data['Distance'] / 1000;
+
+            $category = $data['Category'];
+
+            if (isset($dayData[$category]))
+            {
+                $dayData[$category]['elapsedTime'] += $end - $begin;
+                $dayData[$category]['distance'] += $distance;
             }
+            else
+            {
+                $dayData[$category]['elapsedTime'] = $end - $begin;
+                $dayData[$category]['distance'] = $distance;
+            }
+
+            $dayData[$category]['day'] = date('Y-m-d', $begin);
         }
+
+        foreach ($dayData as $category => $data)
+        {
+            $dayData[$category]['speed'] = round($data['distance'] / ($data['elapsedTime'] / 3600), 2);
+            $dayData[$category]['elapsedTimeStr'] = gmdate("H:i:s", $data['elapsedTime']);
+        }
+
+        return $dayData;
     }
 
 

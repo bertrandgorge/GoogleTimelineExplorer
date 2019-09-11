@@ -16,7 +16,7 @@ try
 {
     $kmlfiles = new KMLFiles();
 
-    $start_date = mktime(0, 0, 0, date('m'), 1, date('Y') - 1); // last year
+    $start_date = mktime(0, 0, 0, date('m') - 6, 1, date('Y')); // 6 months ago
     $end_date = mktime(0, 0, 0, date('m'), date('j') - 1, date('Y')); // yesterday
 
     $_SESSION['start_date'] = $start_date;

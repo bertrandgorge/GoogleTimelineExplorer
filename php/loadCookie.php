@@ -28,8 +28,8 @@ try
 
     $start_date = mktime(0, 0, 0, 4, 2, 2019); // some random date
 
-    $kmlfile = new KMLFile($_SESSION['cookie'], $start_date, $_SESSION['tempfolder']);
-    if (!$kmlfile->fetchKML())
+    $kmlfile = new KMLFile($start_date, $_SESSION['tempfolder']);
+    if (!$kmlfile->fetchKML($_SESSION['cookie']))
     {
         echo 'Error: Could not fetch the file - please check that your cURL command is correct';
         $_SESSION['cookie'] = '';
